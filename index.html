@@ -73,6 +73,12 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .scan-row .form-group.ticker-group{flex:2;min-width:160px}
 .price-status{font-family:var(--font-display);font-size:0.6rem;margin-top:0.2rem;min-height:0;position:absolute;bottom:-1.1rem;left:0}
 .form-group.ticker-group{position:relative}
+.ticker-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-card);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius) var(--radius);max-height:200px;overflow-y:auto;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,0.4)}
+.ticker-dropdown.active{display:block}
+.ticker-option{padding:0.45rem 0.7rem;cursor:pointer;font-family:var(--font-display);font-size:0.75rem;display:flex;justify-content:space-between;align-items:center;transition:background 0.15s}
+.ticker-option:hover,.ticker-option.selected{background:var(--bg-card-hover)}
+.ticker-option .ticker-sym{font-weight:600;color:var(--text-primary)}
+.ticker-option .ticker-sector{font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px}
 .top-plays-row{display:flex;gap:0.9rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem}
 .top-plays-row .form-group{flex:0 0 auto;min-width:120px}
 .watchlist-box{flex:1;min-width:200px}
@@ -232,15 +238,35 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .gauge-detail{flex:1;min-width:180px}
 
 @media(max-width:640px){
-  .app{padding:1rem 0.75rem 3rem}
+  .app{padding:0.75rem 0.5rem 3rem}
   .scan-row{flex-direction:column}.scan-row .form-group{min-width:100%}
+  .scan-panel{padding:1rem}
+  .scan-panel h2{font-size:0.7rem;margin-bottom:1rem}
   .opps-grid{grid-template-columns:1fr}
+  .opp-card{padding:0.75rem}
+  .opp-header{flex-wrap:wrap;gap:0.3rem}
+  .opp-meta{gap:0.5rem}
+  .opp-tags{flex-wrap:wrap;gap:0.3rem}
   .kv-grid{grid-template-columns:1fr 1fr}
-  .header{flex-wrap:wrap}.header-right{margin-left:0;width:100%;justify-content:space-between}
+  .header{flex-wrap:wrap;padding:0.75rem 1rem}.header-right{margin-left:0;width:100%;justify-content:space-between}
+  .logo{font-size:0.9rem}.logo-icon{width:28px;height:28px;font-size:0.6rem}
   .gauge-container{flex-direction:column;align-items:flex-start}
-  .data-table{font-size:0.7rem}.data-table thead th,.data-table tbody td{padding:0.4rem 0.45rem}
+  .data-table{font-size:0.65rem}.data-table thead th,.data-table tbody td{padding:0.35rem 0.4rem}
   .screenshot-preview{flex-direction:column!important}.screenshot-img-wrap{width:100%}
-  .tabs{flex-wrap:wrap}.tab{flex:1;text-align:center}
+  .tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}.tab{flex:1;text-align:center;white-space:nowrap;font-size:0.65rem;padding:0.5rem 0.6rem}
+  .section{padding:0.75rem}
+  .section-title{font-size:0.65rem}
+  .alert{font-size:0.7rem;padding:0.6rem 0.75rem}
+  .exit-item{font-size:0.7rem}
+  .top-plays-row{flex-direction:column}
+  .top-plays-row .form-group{min-width:100%}
+  .watchlist-box{min-width:100%}
+  .top-plays-actions{flex-direction:column}
+  .top-plays-actions .btn{width:100%}
+  .settings-panel .settings-row{flex-direction:column}
+  .settings-panel .settings-row .form-group{min-width:100%}
+  .opps-header{font-size:0.7rem;flex-direction:column;gap:0.3rem}
+  .decay-bars{font-size:0.6rem}
 }
 </style>
 </head>
@@ -291,6 +317,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
         <div class="form-group ticker-group">
           <label>Ticker</label>
           <input type="text" id="scanTicker" placeholder="LUNR, IAU, TMF..." autocomplete="off" spellcheck="false">
+          <div class="ticker-dropdown" id="tickerDropdown"></div>
           <div class="price-status" id="priceStatus"></div>
         </div>
         <div class="form-group">
@@ -457,6 +484,66 @@ async function fetchPrice(ticker){
 }
 
 // Auto-fetch on ticker blur
+// ── Ticker Autocomplete ──
+const TICKER_DB={
+  SPY:'S&P 500 ETF',QQQ:'Nasdaq 100 ETF',IWM:'Russell 2000 ETF',DIA:'Dow Jones ETF',
+  AAPL:'Apple',MSFT:'Microsoft',NVDA:'Nvidia',AMZN:'Amazon',GOOGL:'Alphabet',META:'Meta',TSLA:'Tesla',
+  AMD:'AMD',INTC:'Intel',MU:'Micron',ARM:'Arm Holdings',SMCI:'Super Micro',AVGO:'Broadcom',
+  NFLX:'Netflix',DIS:'Disney',BA:'Boeing',
+  JPM:'JPMorgan',GS:'Goldman Sachs',V:'Visa',MA:'Mastercard',
+  XOM:'ExxonMobil',CVX:'Chevron',
+  PFE:'Pfizer',JNJ:'Johnson & Johnson',UNH:'UnitedHealth',
+  HD:'Home Depot',WMT:'Walmart',COST:'Costco',NKE:'Nike',SBUX:'Starbucks',
+  SQ:'Block',PYPL:'PayPal',SHOP:'Shopify',COIN:'Coinbase',SOFI:'SoFi',
+  PLTR:'Palantir',SNAP:'Snap',UBER:'Uber',ABNB:'Airbnb',ROKU:'Roku',
+  IAU:'iShares Gold',GLD:'SPDR Gold',SLV:'iShares Silver',
+  TLT:'20+ Yr Treasury',TMF:'3x Long Treasury',
+  LUNR:'Intuitive Machines',RKLB:'Rocket Lab',POET:'POET Technologies',
+  SIDU:'Sidus Space',SPCE:'Virgin Galactic',ASTS:'AST SpaceMobile',
+};
+const tickerInput=document.getElementById('scanTicker');
+const tickerDD=document.getElementById('tickerDropdown');
+let ddIndex=-1;
+
+function showTickerDropdown(query){
+  query=query.toUpperCase().trim();
+  if(!query){tickerDD.classList.remove('active');return}
+  const matches=Object.entries(TICKER_DB).filter(([sym,name])=>
+    sym.startsWith(query)||name.toUpperCase().includes(query)
+  ).slice(0,8);
+  if(matches.length===0){tickerDD.classList.remove('active');return}
+  ddIndex=-1;
+  tickerDD.innerHTML=matches.map(([sym,name])=>
+    `<div class="ticker-option" data-sym="${sym}" onmousedown="selectTicker('${sym}')">
+      <span class="ticker-sym">${sym}</span>
+      <span class="ticker-sector">${name}</span>
+    </div>`
+  ).join('');
+  tickerDD.classList.add('active');
+}
+
+function selectTicker(sym){
+  tickerInput.value=sym;
+  tickerDD.classList.remove('active');
+  document.getElementById('scanPrice').value='';
+  fetchPrice(sym);
+}
+
+tickerInput.addEventListener('input',function(){showTickerDropdown(this.value)});
+tickerInput.addEventListener('focus',function(){if(this.value)showTickerDropdown(this.value)});
+tickerInput.addEventListener('keydown',function(e){
+  const opts=tickerDD.querySelectorAll('.ticker-option');
+  if(!tickerDD.classList.contains('active')||opts.length===0){
+    if(e.key==='Enter'){e.preventDefault();scanTicker()}
+    return;
+  }
+  if(e.key==='ArrowDown'){e.preventDefault();ddIndex=Math.min(ddIndex+1,opts.length-1);opts.forEach((o,i)=>o.classList.toggle('selected',i===ddIndex))}
+  else if(e.key==='ArrowUp'){e.preventDefault();ddIndex=Math.max(ddIndex-1,0);opts.forEach((o,i)=>o.classList.toggle('selected',i===ddIndex))}
+  else if(e.key==='Enter'){e.preventDefault();if(ddIndex>=0&&opts[ddIndex])selectTicker(opts[ddIndex].dataset.sym);else{tickerDD.classList.remove('active');scanTicker()}}
+  else if(e.key==='Escape'){tickerDD.classList.remove('active')}
+});
+document.addEventListener('click',function(e){if(!e.target.closest('.ticker-group'))tickerDD.classList.remove('active')});
+
 document.getElementById('scanTicker').addEventListener('blur',async function(){
   const ticker=this.value.trim().toUpperCase();
   if(!ticker)return;
@@ -465,7 +552,6 @@ document.getElementById('scanTicker').addEventListener('blur',async function(){
   const price=await fetchPrice(ticker);
   if(price){priceEl.value=price;priceEl.classList.add('auto-filled');setTimeout(()=>priceEl.classList.remove('auto-filled'),3000)}
 });
-document.getElementById('scanTicker').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();scanTicker()}});
 
 // ── Generate Expiration Dates (3rd Fridays) ──
 function getExpirations(minDTE,count=4){
