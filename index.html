@@ -73,6 +73,23 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .scan-row .form-group.ticker-group{flex:2;min-width:160px}
 .price-status{font-family:var(--font-display);font-size:0.6rem;margin-top:0.2rem;min-height:0;position:absolute;bottom:-1.1rem;left:0}
 .form-group.ticker-group{position:relative}
+.top-plays-row{display:flex;gap:0.9rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1rem}
+.top-plays-row .form-group{flex:0 0 auto;min-width:120px}
+.watchlist-box{flex:1;min-width:200px}
+.watchlist-box label{font-family:var(--font-display);font-size:0.65rem;font-weight:500;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:0.3rem}
+.watchlist-tags{display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.4rem;min-height:1.6rem}
+.watchlist-tag{font-family:var(--font-display);font-size:0.65rem;font-weight:600;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:0.2rem 0.5rem;display:flex;align-items:center;gap:0.3rem;cursor:default}
+.watchlist-tag .remove{cursor:pointer;color:var(--text-muted);font-size:0.7rem;line-height:1}
+.watchlist-tag .remove:hover{color:var(--loss)}
+.watchlist-add{display:flex;gap:0.3rem}
+.watchlist-add input{font-family:var(--font-display);font-size:0.8rem;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);padding:0.4rem 0.6rem;outline:none;width:110px}
+.watchlist-add input:focus{border-color:var(--accent)}
+.watchlist-add button{padding:0.4rem 0.7rem;font-size:0.8rem}
+.top-plays-actions{display:flex;gap:0.6rem;flex-wrap:wrap}
+.top-plays-progress{margin-top:1rem}
+.top-progress-bar{height:4px;background:var(--bg-input);border-radius:2px;overflow:hidden}
+.top-progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s;width:0%}
+.top-progress-label{font-family:var(--font-display);font-size:0.6rem;color:var(--text-muted);margin-top:0.3rem}
 .price-status.fetching{color:var(--info)}
 .price-status.fetched{color:var(--profit)}
 .price-status.error{color:var(--loss)}
@@ -262,6 +279,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <!-- Tabs -->
   <div class="tabs">
     <div class="tab active" onclick="switchTab('scan')">Scan Ticker</div>
+    <div class="tab" onclick="switchTab('top')">Top Plays</div>
     <div class="tab" onclick="switchTab('screenshot')">Screenshot Import</div>
   </div>
 
@@ -300,6 +318,48 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Tab: Top Plays -->
+  <div class="tab-content" id="tab-top">
+    <div class="scan-panel">
+      <h2>Top Plays</h2>
+      <div class="top-plays-controls">
+        <div class="top-plays-row">
+          <div class="watchlist-box">
+            <label>Your Watchlist</label>
+            <div class="watchlist-tags" id="watchlistTags"></div>
+            <div class="watchlist-add">
+              <input type="text" id="watchlistInput" placeholder="Add ticker..." autocomplete="off" spellcheck="false">
+              <button class="btn btn-secondary" onclick="addWatchlistTicker()">+</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Timeframe</label>
+            <select id="topTimeframe">
+              <option value="1w">1 Week</option>
+              <option value="2w">2 Weeks</option>
+              <option value="1m" selected>1 Month</option>
+              <option value="2m">2 Months</option>
+              <option value="3m">3 Months</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Budget</label>
+            <input type="number" id="topBudget" placeholder="300" step="50" min="0">
+          </div>
+        </div>
+        <div class="top-plays-actions">
+          <button class="btn btn-primary btn-scan" id="scanWatchlistBtn" onclick="scanTopPlays('watchlist')">Scan Watchlist</button>
+          <button class="btn btn-secondary btn-scan" id="scanMarketBtn" onclick="scanTopPlays('market')">Market Scan (Top 50)</button>
+        </div>
+      </div>
+      <div class="top-plays-progress" id="topProgress" style="display:none">
+        <div class="top-progress-bar"><div class="top-progress-fill" id="topProgressFill"></div></div>
+        <div class="top-progress-label" id="topProgressLabel">Scanning...</div>
+      </div>
+    </div>
+    <div id="topOutput" class="output"></div>
   </div>
 
   <!-- Tab: Screenshot -->
@@ -368,7 +428,8 @@ function toggleSettings(){document.getElementById('settingsPanel').classList.tog
 
 // ── Tabs ──
 function switchTab(name){
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===(name==='scan'?0:1)));
+  const tabNames=['scan','top','screenshot'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',tabNames[i]===name));
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
 }
@@ -744,6 +805,217 @@ function analyzePlay(p){
   <div class="quote-box">Nobody ever went broke taking profits.</div></div>`;
 
   showOutput(html);
+  document.getElementById('output').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ── TOP PLAYS: Watchlist + Market Scan ──
+const MARKET_TICKERS=['SPY','QQQ','IWM','AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA',
+  'AMD','INTC','MU','NFLX','DIS','BA','JPM','GS','V','MA',
+  'XOM','CVX','PFE','JNJ','UNH','HD','WMT','COST','NKE','SBUX',
+  'SQ','PYPL','SHOP','COIN','SOFI','PLTR','SNAP','UBER','ABNB','ROKU',
+  'IAU','GLD','SLV','TLT','TMF','LUNR','RKLB','POET','ARM','SMCI'];
+
+const DEFAULT_WATCHLIST=['LUNR','IAU','TMF','POET','SPY','NVDA','TSLA','AMD'];
+
+function getWatchlist(){
+  return JSON.parse(localStorage.getItem('ditm_watchlist')||'null')||[...DEFAULT_WATCHLIST];
+}
+function saveWatchlist(list){
+  localStorage.setItem('ditm_watchlist',JSON.stringify(list));
+}
+function renderWatchlist(){
+  const list=getWatchlist();
+  const container=document.getElementById('watchlistTags');
+  container.innerHTML=list.map(t=>`<div class="watchlist-tag">${t}<span class="remove" onclick="removeWatchlistTicker('${t}')">&times;</span></div>`).join('');
+}
+function addWatchlistTicker(){
+  const input=document.getElementById('watchlistInput');
+  const ticker=input.value.toUpperCase().trim();
+  if(!ticker)return;
+  const list=getWatchlist();
+  if(!list.includes(ticker)){list.push(ticker);saveWatchlist(list);renderWatchlist();}
+  input.value='';
+}
+function removeWatchlistTicker(t){
+  const list=getWatchlist().filter(x=>x!==t);
+  saveWatchlist(list);renderWatchlist();
+}
+document.getElementById('watchlistInput').addEventListener('keydown',e=>{if(e.key==='Enter')addWatchlistTicker()});
+renderWatchlist();
+
+async function scanTopPlays(mode){
+  const tickers=mode==='market'?MARKET_TICKERS:getWatchlist();
+  if(tickers.length===0){document.getElementById('topOutput').innerHTML='<div class="alert alert-warn"><span class="alert-icon">⚠️</span><div>Add tickers to your watchlist first.</div></div>';return}
+
+  const btnW=document.getElementById('scanWatchlistBtn');
+  const btnM=document.getElementById('scanMarketBtn');
+  btnW.disabled=true;btnM.disabled=true;
+  btnW.textContent=mode==='watchlist'?'Scanning...':'Scan Watchlist';
+  btnM.textContent=mode==='market'?'Scanning...':'Market Scan (Top 50)';
+
+  const progress=document.getElementById('topProgress');
+  const fill=document.getElementById('topProgressFill');
+  const label=document.getElementById('topProgressLabel');
+  progress.style.display='block';fill.style.width='0%';
+
+  const settings=JSON.parse(localStorage.getItem('oth_settings')||'{}');
+  const timeframe=document.getElementById('topTimeframe').value;
+  const budget=parseFloat(document.getElementById('topBudget').value)||settings.budget||300;
+  const accountVal=settings.account||0;
+  const tf=TF_MAP[timeframe]||TF_MAP['1m'];
+  const r=0.045;
+  const today=new Date();today.setHours(0,0,0,0);
+
+  const allPlays=[];
+  let done=0;
+  let failed=[];
+
+  for(const ticker of tickers){
+    done++;
+    const pct=Math.round(done/tickers.length*100);
+    fill.style.width=pct+'%';
+    label.textContent=`Scanning ${ticker}... (${done}/${tickers.length})`;
+
+    try{
+      const chainRes=await fetch(`/api/options?symbol=${encodeURIComponent(ticker)}`);
+      if(!chainRes.ok){failed.push(ticker);continue;}
+      const chain=await chainRes.json();
+      if(chain.error){failed.push(ticker);continue;}
+
+      const S=chain.price;
+      if(!S)continue;
+
+      const validExps=chain.expirations.map(ts=>{
+        const d=new Date(ts*1000);
+        const dte=Math.round((d-today)/(1000*60*60*24));
+        return{ts,date:d,dte,label:fmtDate(d),dateStr:fmtDateStr(d)};
+      }).filter(e=>e.dte>=tf.minDTE).slice(0,2);
+
+      for(const exp of validExps){
+        const expRes=await fetch(`/api/options?symbol=${encodeURIComponent(ticker)}&date=${exp.ts}`);
+        const expData=await expRes.json();
+        if(expData.error)continue;
+
+        for(const type of ['call','put']){
+          const contracts=type==='call'?expData.calls:expData.puts;
+          for(const c of contracts){
+            const premium=c.mid>0?c.mid:c.last;
+            if(premium<0.01)continue;
+            const cost=premium*100;
+            const iv=c.iv?c.iv/100:estimateIV(ticker,S);
+            const ivDisplay=c.iv||+(iv*100).toFixed(0);
+            const mn=moneyness(type,S,c.strike);
+            const g=calcGreeks(type,S,c.strike,exp.dte/365,r,iv);
+            const breakeven=type==='call'?c.strike+premium:c.strike-premium;
+            const score=scorePlay(type,S,c.strike,exp.dte,r,iv,premium,budget);
+            const spread=c.ask>0&&c.bid>0?c.ask-c.bid:0;
+            const spreadPct=premium>0&&spread>0?(spread/premium*100):0;
+            const pls=[5,10,20].map(pct=>{
+              const tp=type==='call'?S*(1+pct/100):S*(1-pct/100);
+              const intr=type==='call'?Math.max(tp-c.strike,0):Math.max(c.strike-tp,0);
+              const pl=(intr-premium)*100;
+              const roi=premium>0?(intr-premium)/premium*100:0;
+              return{pct,tp:+tp.toFixed(2),pl:+pl.toFixed(2),roi:+roi.toFixed(1)};
+            });
+            allPlays.push({ticker,type,K:c.strike,exp:exp.label,expDate:exp.dateStr,expTs:exp.ts,dte:exp.dte,
+              premium:+premium.toFixed(2),cost:+cost.toFixed(2),mn,score,breakeven:+breakeven.toFixed(2),
+              delta:g.delta,theta:g.theta,gamma:g.gamma,vega:g.vega,iv,ivDisplay,
+              pls,affordable:budget<=0||cost<=budget,
+              bid:c.bid,ask:c.ask,last:c.last,volume:c.volume,openInterest:c.openInterest,
+              spread:+spread.toFixed(2),spreadPct:+spreadPct.toFixed(1),
+              realData:c.bid>0||c.ask>0,stockPrice:S});
+          }
+        }
+      }
+    }catch(e){failed.push(ticker)}
+
+    // Small delay to avoid hammering Yahoo
+    if(done<tickers.length)await new Promise(r=>setTimeout(r,200));
+  }
+
+  progress.style.display='none';
+  btnW.disabled=false;btnM.disabled=false;
+  btnW.textContent='Scan Watchlist';btnM.textContent='Market Scan (Top 50)';
+
+  // Rank and display
+  const affordable=allPlays.filter(p=>p.affordable&&p.score>0).sort((a,b)=>b.score-a.score);
+  const all=allPlays.filter(p=>p.score>0).sort((a,b)=>b.score-a.score);
+  const display=affordable.length>=5?affordable:all;
+  const top=display.slice(0,12);
+
+  let html='';
+
+  // Header
+  const scannedCount=tickers.length-failed.length;
+  html+=`<div class="opps-header" style="flex-wrap:wrap">${mode==='market'?'Market':'Watchlist'} Top Plays
+    <span class="tag tag-green" style="font-size:0.55rem">LIVE DATA</span>
+    <span class="tag tag-blue" style="font-size:0.55rem">${scannedCount} TICKERS · ${tf.label}</span>
+  </div>`;
+
+  if(failed.length>0){
+    html+=`<div style="font-size:0.6rem;color:var(--text-muted);font-family:var(--font-display);margin-bottom:0.5rem">Skipped: ${failed.join(', ')}</div>`;
+  }
+
+  if(top.length===0){
+    html+=`<div class="alert alert-warn"><span class="alert-icon">😐</span><div>No plays found within your $${budget} budget across ${scannedCount} tickers.</div></div>`;
+  }else{
+    html+=`<div class="opps-grid">${top.map((p,i)=>{
+      const rankLabel=i===0?'#1 BEST':i<3?'TOP 3':i<5?'TOP 5':'NOTABLE';
+      const rankClass=i===0?'best':i<3?'good':'risky';
+      const dteSafe=p.dte>=30?'profit':p.dte>=21?'warn':'loss';
+      const priceLabel=p.realData?`Bid ${fmtD(p.bid)} / Ask ${fmtD(p.ask)}`:`Last ${fmtD(p.last)}`;
+      return`<div class="opp-card ${i===0?'best':''}" onclick="showTopPlayDetail(${JSON.stringify(p).replace(/"/g,'&quot;')})">
+        <div class="opp-rank ${rankClass}">${rankLabel}</div>
+        <div class="opp-header">
+          <span class="opp-strike" style="font-size:0.95rem">${p.ticker}</span>
+          <span class="opp-type" style="background:${p.type==='call'?'var(--profit-dim)':'var(--loss-dim)'};color:${p.type==='call'?'var(--profit)':'var(--loss)'};padding:0.1rem 0.4rem;border-radius:3px;font-weight:700">${p.type.toUpperCase()}</span>
+          <span class="opp-strike">${fmtD(p.K)}</span>
+          <span class="opp-exp">${p.exp} · ${p.dte}d</span>
+        </div>
+        <div class="opp-meta">
+          <div class="opp-meta-item"><div class="opp-meta-label">Stock</div><div class="opp-meta-val">${fmtD(p.stockPrice)}</div></div>
+          <div class="opp-meta-item"><div class="opp-meta-label">Premium</div><div class="opp-meta-val" style="color:var(--accent)">${fmtD(p.premium)}</div></div>
+          <div class="opp-meta-item"><div class="opp-meta-label">Cost</div><div class="opp-meta-val">${fmtD(p.cost)}</div></div>
+          <div class="opp-meta-item"><div class="opp-meta-label">Delta</div><div class="opp-meta-val">${Math.abs(p.delta).toFixed(2)}</div></div>
+        </div>
+        <div style="font-family:var(--font-display);font-size:0.55rem;color:var(--text-muted);margin-bottom:0.2rem">${priceLabel} · Vol ${p.volume} · OI ${p.openInterest}${p.ivDisplay?' · IV '+p.ivDisplay+'%':''}</div>
+        <div style="font-family:var(--font-display);font-size:0.55rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin:0.3rem 0 0.2rem">P/L at expiration</div>
+        ${p.pls.map(pl=>`<div class="opp-pl-row">
+          <span>Stock ${p.type==='call'?'+':'-'}${pl.pct}% → ${fmtD(pl.tp)}</span>
+          <span style="color:var(${pl.pl>=0?'--profit':'--loss'});font-weight:600">${fmtD(pl.pl)} (${fmtPct(pl.roi)})</span>
+        </div>`).join('')}
+        <div class="opp-tags">
+          <span class="opp-tag" style="background:var(--${dteSafe}-dim);color:var(--${dteSafe})">${p.dte}d DTE</span>
+          <span class="opp-tag" style="background:var(--${p.mn==='OTM'?'warn':p.mn==='ITM'?'profit':'info'}-dim);color:var(--${p.mn==='OTM'?'warn':p.mn==='ITM'?'profit':'info'})">${p.mn}</span>
+          <span class="opp-tag" style="background:var(--loss-dim);color:var(--loss)">Max loss ${fmtD(p.cost)}</span>
+          ${p.spreadPct>20?'<span class="opp-tag" style="background:var(--warn-dim);color:var(--warn)">WIDE SPREAD</span>':''}
+          ${!p.affordable?'<span class="opp-tag" style="background:var(--loss-dim);color:var(--loss)">OVER BUDGET</span>':''}
+          <a href="${yahooOptionsUrl(p.ticker,p.expTs)}" target="_blank" rel="noopener" class="opp-tag" style="background:var(--info-dim);color:var(--info);text-decoration:none;margin-left:auto" onclick="event.stopPropagation()">Verify on Yahoo</a>
+        </div>
+      </div>`}).join('')}</div>`;
+
+    html+=`<div style="font-size:0.72rem;color:var(--text-muted);font-family:var(--font-display);margin-bottom:1rem">
+      Real market data from Yahoo Finance. ${!top[0].realData?'Market is closed — showing last traded prices. ':''}Click any card for full analysis.
+    </div>`;
+  }
+
+  if(accountVal>0&&top.length>0){
+    const best=top[0];const pct=(best.cost/accountVal*100);
+    html+=`<div class="alert alert-info"><span class="alert-icon">💰</span><div>
+      Top pick costs <strong>${fmtD(best.cost)}</strong> = <strong>${pct.toFixed(1)}%</strong> of your $${accountVal.toFixed(0)} account.
+      ${pct>15?'⚠️ Over the 15% limit.':pct>10?'Upper edge — high conviction only.':'Good size.'}
+    </div></div>`;
+  }
+
+  document.getElementById('topOutput').innerHTML=html;
+}
+
+function showTopPlayDetail(p){
+  // Set the ticker in the scan tab and run analyzePlay
+  document.getElementById('scanTicker').value=p.ticker;
+  document.getElementById('scanPrice').value=p.stockPrice;
+  analyzePlay(p);
+  switchTab('scan');
   document.getElementById('output').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
