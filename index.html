@@ -960,7 +960,7 @@ async function scanTopPlays(mode){
     html+=`<div class="alert alert-warn"><span class="alert-icon">😐</span><div>No plays found within your $${budget} budget across ${scannedCount} tickers.</div></div>`;
   }else{
     html+=`<div class="opps-grid">${top.map((p,i)=>{
-      const rankLabel=i===0?'#1 BEST':i<3?'TOP 3':i<5?'TOP 5':'NOTABLE';
+      const rankLabel='#'+(i+1);
       const rankClass=i===0?'best':i<3?'good':'risky';
       const dteSafe=p.dte>=30?'profit':p.dte>=21?'warn':'loss';
       const priceLabel=p.realData?`Bid ${fmtD(p.bid)} / Ask ${fmtD(p.ask)}`:`Last ${fmtD(p.last)}`;
