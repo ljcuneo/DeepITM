@@ -507,48 +507,82 @@ function getStrikes(S,type,count=5){
   return strikes.filter(k=>k>0).sort((a,b)=>type==='call'?a-b:b-a);
 }
 
-// ── Score an option play ──
-function scorePlay(type,S,K,T,r,iv,premium,budget){
-  const g=calcGreeks(type,S,K,T/365,r,iv);
-  const mn=moneyness(type,S,K);
-  const dte=T;
+// ── Score an option play (quantitative model) ──
+// Uses 5 weighted components: EV (30%), Risk-Reward (25%), POP (20%), Liquidity (15%), Spread (10%)
+function scorePlay(type,S,K,dte,r,iv,premium,budget,bid,ask,volume,oi){
   const cost=premium*100;
-
-  // Can they afford it?
+  if(premium<0.05)return-1;
   if(budget>0&&cost>budget)return-1;
-  if(premium<0.01)return-1;
 
-  let score=50; // base
+  const T=dte/365;
+  const g=calcGreeks(type,S,K,T,r,iv);
+  const delta=Math.abs(g.delta);
 
-  // Delta reward — higher delta = higher probability
-  score+=Math.abs(g.delta)*30;
-
-  // Cost efficiency — cheaper is better for small accounts
-  if(cost<budget*0.5)score+=10;
-  if(cost<budget*0.3)score+=5;
-
-  // DTE bonus — more time is better
-  if(dte>=45)score+=15;
-  else if(dte>=30)score+=10;
-  else if(dte<21)score-=20;
-  if(dte<14)score-=30;
-
-  // Moneyness — ATM is sweet spot
-  if(mn==='ATM')score+=15;
-  else if(mn==='ITM')score+=5;
-  else score-=5; // OTM penalty
-
-  // ROI potential at +10% move
+  // ── Component 1: Expected Value (30%) ──
+  // EV = P(profit) × avg_profit - P(loss) × max_loss
+  // Use profit at a realistic 10% favorable move as the win scenario
   const targetPrice=type==='call'?S*1.10:S*0.90;
-  const intrinsicAtTarget=type==='call'?Math.max(targetPrice-K,0):Math.max(K-targetPrice,0);
-  const roiAt10=(intrinsicAtTarget-premium)/premium*100;
-  if(roiAt10>100)score+=15;
-  else if(roiAt10>50)score+=10;
-  else if(roiAt10>0)score+=5;
-  else score-=10;
+  const intrAtTarget=type==='call'?Math.max(targetPrice-K,0):Math.max(K-targetPrice,0);
+  const profitAtTarget=intrAtTarget-premium;
+  const ev=delta*Math.max(profitAtTarget,0)-(1-delta)*premium;
+  // Normalize: EV as fraction of premium, clamped to [0,1]
+  const evScore=Math.max(0,Math.min(1,(ev/premium+1)/2));
 
-  // Spec ticker penalty
-  return Math.max(0,Math.min(100,score));
+  // ── Component 2: Risk-Reward Ratio (25%) ──
+  // Potential gain at 10% move / max risk (premium)
+  const rrRatio=premium>0?Math.max(profitAtTarget,0)/premium:0;
+  // Normalize against target of 3.0 (3:1 reward:risk)
+  const rrScore=Math.min(1,rrRatio/3);
+
+  // ── Component 3: Probability of Profit (20%) ──
+  // More accurate than raw delta: accounts for premium paid (breakeven distance)
+  const breakeven=type==='call'?K+premium:K-premium;
+  // signedMove: positive = stock needs to move in your favor, negative = already past breakeven
+  const signedMove=type==='call'?(breakeven-S)/S:(S-breakeven)/S;
+  // Use IV and DTE to estimate probability of reaching breakeven
+  const vol=iv*Math.sqrt(T);
+  const popRaw=vol>0?normCDF(-signedMove/vol):0;
+  const popScore=Math.max(0,Math.min(1,popRaw));
+
+  // ── Component 4: Liquidity (15%) ──
+  const vol_c=volume||0;const oi_c=oi||0;
+  let liqScore=1.0;
+  // Hard filter: skip truly illiquid options
+  if(vol_c<10&&oi_c<50)return-1;
+  // Graduated penalties
+  if(vol_c<50)liqScore*=0.3;
+  else if(vol_c<100)liqScore*=0.5;
+  else if(vol_c<500)liqScore*=0.75;
+  else if(vol_c<1000)liqScore*=0.9;
+  if(oi_c<100)liqScore*=0.4;
+  else if(oi_c<500)liqScore*=0.7;
+  else if(oi_c<1000)liqScore*=0.85;
+
+  // ── Component 5: Spread Efficiency (10%) ──
+  const spreadWidth=(ask>0&&bid>0)?ask-bid:0;
+  const spreadRatio=premium>0&&spreadWidth>0?spreadWidth/premium:0;
+  // If no bid/ask data (market closed), neutral score
+  const spreadScore=(ask>0&&bid>0)?Math.max(0,1-spreadRatio):0.5;
+
+  // ── DTE safety adjustment ──
+  // Not a component but a multiplier — penalizes the danger zone
+  let dteMult=1.0;
+  if(dte<14)dteMult=0.3;       // Danger zone
+  else if(dte<21)dteMult=0.6;  // High risk
+  else if(dte<30)dteMult=0.85; // Caution
+
+  // ── Composite score (0-100) ──
+  const raw=(evScore*0.30+rrScore*0.25+popScore*0.20+liqScore*0.15+spreadScore*0.10)*100;
+  const final=Math.round(Math.max(0,Math.min(100,raw*dteMult)));
+  return final;
+}
+
+// Kelly Criterion for position sizing (half-Kelly for safety)
+function kellySize(delta,avgWin,maxLoss){
+  const p=Math.abs(delta);
+  const ratio=maxLoss>0?avgWin/maxLoss:0;
+  const full=ratio>0?p-(1-p)/ratio:0;
+  return Math.max(0,full*0.5); // Half-Kelly
 }
 
 // ── SCAN: Main function ──
@@ -616,7 +650,7 @@ async function scanTicker(){
         const mn=moneyness(type,S,c.strike);
         const g=calcGreeks(type,S,c.strike,exp.dte/365,r,iv);
         const breakeven=type==='call'?c.strike+premium:c.strike-premium;
-        const score=scorePlay(type,S,c.strike,exp.dte,r,iv,premium,budget);
+        const score=scorePlay(type,S,c.strike,exp.dte,r,iv,premium,budget,c.bid,c.ask,c.volume,c.openInterest);
 
         // Real bid-ask spread warning
         const spread=c.ask>0&&c.bid>0?c.ask-c.bid:0;
@@ -787,10 +821,18 @@ function analyzePlay(p){
   <div class="decay-bars">${checkpoints.map(c=>{const pct=Math.max(0,Math.min(100,c.pctEntry));const cls=pct>50?'high':pct>20?'med':'low';return`<div class="decay-row"><div class="decay-label">${c.dte}d</div><div class="decay-bar-track"><div class="decay-bar ${cls}" style="width:${Math.max(pct,8)}%">${pct.toFixed(0)}%</div></div></div>`}).join('')}</div></div>`;
 
   // Position sizing
+  // Kelly Criterion sizing
+  const targetP=type==='call'?S*1.10:S*0.90;
+  const intrAtTgt=type==='call'?Math.max(targetP-K,0):Math.max(K-targetP,0);
+  const avgWin=Math.max(intrAtTgt-premium,0);
+  const kellyPct=kellySize(g.delta,avgWin,premium);
+
   if(accountVal>0){const pct=totalCost/accountVal*100;const maxC=Math.max(1,Math.floor(accountVal*0.10/(premium*100)));
+  const kellyContracts=kellyPct>0?Math.max(1,Math.floor(accountVal*kellyPct/(premium*100))):0;
   html+=`<div class="section ${pct>15?'danger-section':'profit-section'}"><div class="section-title">Position Size <span class="tag ${pct>15?'tag-red':'tag-green'}">SIZING</span></div>
   <div class="kv-grid"><div class="kv"><div class="kv-label">% of Account</div><div class="kv-value ${pct>15?'loss':pct>10?'warn':'profit'}">${pct.toFixed(1)}%</div></div>
-  <div class="kv"><div class="kv-label">Max @ 10% Risk</div><div class="kv-value accent">${maxC} contract${maxC!==1?'s':''}</div></div></div>
+  <div class="kv"><div class="kv-label">Max @ 10% Risk</div><div class="kv-value accent">${maxC} contract${maxC!==1?'s':''}</div></div>
+  <div class="kv"><div class="kv-label">Kelly (½)</div><div class="kv-value">${(kellyPct*100).toFixed(1)}% → ${kellyContracts} contract${kellyContracts!==1?'s':''}</div></div></div>
   <div class="alert alert-info"><span class="alert-icon">💭</span><div>If this goes to $0, you lose <strong>${fmtD(totalCost)}</strong>. That's <strong>${pct.toFixed(1)}%</strong> of your account. Can you afford that and still trade next week?</div></div></div>`}
 
   // Exit plan
@@ -907,7 +949,7 @@ async function scanTopPlays(mode){
             const mn=moneyness(type,S,c.strike);
             const g=calcGreeks(type,S,c.strike,exp.dte/365,r,iv);
             const breakeven=type==='call'?c.strike+premium:c.strike-premium;
-            const score=scorePlay(type,S,c.strike,exp.dte,r,iv,premium,budget);
+            const score=scorePlay(type,S,c.strike,exp.dte,r,iv,premium,budget,c.bid,c.ask,c.volume,c.openInterest);
             const spread=c.ask>0&&c.bid>0?c.ask-c.bid:0;
             const spreadPct=premium>0&&spread>0?(spread/premium*100):0;
             const pls=[5,10,20].map(pct=>{
