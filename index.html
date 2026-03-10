@@ -68,6 +68,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .scan-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.5rem;box-shadow:var(--shadow)}
 .scan-panel h2{font-family:var(--font-display);font-size:0.8rem;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:1.25rem;display:flex;align-items:center;gap:0.5rem}
 .scan-panel h2::before{content:'>';color:var(--text-muted);font-weight:400}
+.hint{font-family:var(--font-body);font-size:0.75rem;color:var(--text-secondary);line-height:1.5;margin:-0.5rem 0 1.25rem;max-width:600px}
+.hint-inline{font-weight:400;color:var(--text-muted);font-size:0.55rem;letter-spacing:0}
 .scan-row{display:flex;gap:0.9rem;flex-wrap:wrap;align-items:flex-end}
 .scan-row .form-group{flex:1;min-width:120px}
 .scan-row .form-group.ticker-group{flex:2;min-width:160px}
@@ -275,7 +277,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <header class="header">
     <div class="logo"><div class="logo-icon">DI</div>DeepITM</div>
     <div class="header-right">
-      <div class="header-sub">Plan · Evaluate · Protect</div>
+      <div class="header-sub">Find smarter options trades</div>
       <button class="settings-btn" onclick="toggleSettings()">Settings</button>
     </div>
   </header>
@@ -285,11 +287,11 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <h3>Settings <span class="saved-indicator" id="savedIndicator">Saved</span></h3>
     <div class="settings-row">
       <div class="form-group">
-        <label>Default Account Value</label>
+        <label>Total Account Value <span class="hint-inline">for position sizing</span></label>
         <input type="number" id="defaultAccount" placeholder="1500" step="100" min="0">
       </div>
       <div class="form-group">
-        <label>Default Budget</label>
+        <label>Default Budget <span class="hint-inline">max per trade</span></label>
         <input type="number" id="defaultBudget" placeholder="300" step="50" min="0">
       </div>
       <div class="form-group" style="flex:0">
@@ -298,34 +300,35 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
       </div>
     </div>
     <div style="font-size:0.65rem;color:var(--text-muted);font-family:var(--font-display);margin-top:0.5rem">
-      Prices auto-fetch via Yahoo Finance when running with <span style="color:var(--accent)">node server.js</span>. Settings saved to browser.
+      Set your account size to get position sizing alerts. Settings are saved to your browser.
     </div>
   </div>
 
   <!-- Tabs -->
   <div class="tabs">
-    <div class="tab active" onclick="switchTab('scan')">Scan Ticker</div>
-    <div class="tab" onclick="switchTab('top')">Top Plays</div>
-    <div class="tab" onclick="switchTab('screenshot')">Screenshot Import</div>
+    <div class="tab active" onclick="switchTab('scan')">Search</div>
+    <div class="tab" onclick="switchTab('top')">Discover</div>
+    <div class="tab" onclick="switchTab('screenshot')">Screenshot</div>
   </div>
 
   <!-- Tab: Scan -->
   <div class="tab-content active" id="tab-scan">
     <div class="scan-panel">
-      <h2>Scan for Plays</h2>
+      <h2>Search a Stock</h2>
+      <div class="hint">Enter any stock ticker to find the best call and put options available. We'll rank them by expected value, risk-reward, and liquidity.</div>
       <div class="scan-row">
         <div class="form-group ticker-group">
-          <label>Ticker</label>
-          <input type="text" id="scanTicker" placeholder="LUNR, IAU, TMF..." autocomplete="off" spellcheck="false">
+          <label>Stock Ticker</label>
+          <input type="text" id="scanTicker" placeholder="e.g. AAPL, TSLA, SPY..." autocomplete="off" spellcheck="false">
           <div class="ticker-dropdown" id="tickerDropdown"></div>
           <div class="price-status" id="priceStatus"></div>
         </div>
         <div class="form-group">
-          <label>Stock Price</label>
-          <input type="number" id="scanPrice" placeholder="auto-fetch" step="0.01" min="0">
+          <label>Price <span class="hint-inline">(auto-fills)</span></label>
+          <input type="number" id="scanPrice" placeholder="auto" step="0.01" min="0">
         </div>
         <div class="form-group">
-          <label>Timeframe</label>
+          <label>Expected Move <span class="hint-inline">when?</span></label>
           <select id="scanTimeframe">
             <option value="1w">1 Week</option>
             <option value="2w">2 Weeks</option>
@@ -336,12 +339,12 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
           </select>
         </div>
         <div class="form-group">
-          <label>Budget</label>
+          <label>Max Spend <span class="hint-inline">per trade</span></label>
           <input type="number" id="scanBudget" placeholder="300" step="50" min="0">
         </div>
         <div class="form-group" style="flex:0">
           <label>&nbsp;</label>
-          <button class="btn btn-primary btn-scan" id="scanBtn" onclick="scanTicker()">Scan</button>
+          <button class="btn btn-primary btn-scan" id="scanBtn" onclick="scanTicker()">Find Plays</button>
         </div>
       </div>
     </div>
@@ -350,11 +353,12 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <!-- Tab: Top Plays -->
   <div class="tab-content" id="tab-top">
     <div class="scan-panel">
-      <h2>Top Plays</h2>
+      <h2>Discover Opportunities</h2>
+      <div class="hint">Scan multiple stocks at once to find the best options across the market. Build a watchlist of stocks you follow, or scan the top 50 most-traded tickers.</div>
       <div class="top-plays-controls">
         <div class="top-plays-row">
           <div class="watchlist-box">
-            <label>Your Watchlist</label>
+            <label>Your Watchlist <span class="hint-inline">stocks you're tracking</span></label>
             <div class="watchlist-tags" id="watchlistTags"></div>
             <div class="watchlist-add">
               <input type="text" id="watchlistInput" placeholder="Add ticker..." autocomplete="off" spellcheck="false">
@@ -362,7 +366,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
             </div>
           </div>
           <div class="form-group">
-            <label>Timeframe</label>
+            <label>Expected Move <span class="hint-inline">when?</span></label>
             <select id="topTimeframe">
               <option value="1w">1 Week</option>
               <option value="2w">2 Weeks</option>
@@ -372,13 +376,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
             </select>
           </div>
           <div class="form-group">
-            <label>Budget</label>
+            <label>Max Spend <span class="hint-inline">per trade</span></label>
             <input type="number" id="topBudget" placeholder="300" step="50" min="0">
           </div>
         </div>
         <div class="top-plays-actions">
-          <button class="btn btn-primary btn-scan" id="scanWatchlistBtn" onclick="scanTopPlays('watchlist')">Scan Watchlist</button>
-          <button class="btn btn-secondary btn-scan" id="scanMarketBtn" onclick="scanTopPlays('market')">Market Scan (Top 50)</button>
+          <button class="btn btn-primary btn-scan" id="scanWatchlistBtn" onclick="scanTopPlays('watchlist')">Scan My Watchlist</button>
+          <button class="btn btn-secondary btn-scan" id="scanMarketBtn" onclick="scanTopPlays('market')">Scan Top 50 Stocks</button>
         </div>
       </div>
       <div class="top-plays-progress" id="topProgress" style="display:none">
@@ -392,12 +396,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <!-- Tab: Screenshot -->
   <div class="tab-content" id="tab-screenshot">
     <div class="screenshot-panel">
-      <h2>Robinhood Screenshot <span class="rh-badge">AUTO-FILL</span></h2>
+      <h2>Import Screenshot <span class="rh-badge">AUTO-READ</span></h2>
+      <div class="hint">Drop a screenshot of an option from Robinhood or any broker. We'll read the details and run a full analysis automatically.</div>
       <div class="drop-zone" id="dropZone">
         <div class="drop-zone-content">
           <div class="drop-zone-icon">📱</div>
-          <div class="drop-zone-text">Drop a <strong>Robinhood</strong> option screenshot here</div>
-          <div class="drop-zone-sub">or click to browse · paste with Ctrl/Cmd+V</div>
+          <div class="drop-zone-text">Drop a screenshot here</div>
+          <div class="drop-zone-sub">or click to browse · paste with Cmd+V</div>
         </div>
         <div class="ocr-loading" id="ocrLoading">
           <div class="ocr-spinner"></div>
@@ -1075,7 +1080,7 @@ async function scanTopPlays(mode){
 
   // Header
   const scannedCount=tickers.length-failed.length;
-  html+=`<div class="opps-header" style="flex-wrap:wrap">${mode==='market'?'Market':'Watchlist'} Top Plays
+  html+=`<div class="opps-header" style="flex-wrap:wrap">${mode==='market'?'Market':'Watchlist'} Best Finds
     <span class="tag tag-green" style="font-size:0.55rem">LIVE DATA</span>
     <span class="tag tag-blue" style="font-size:0.55rem">${scannedCount} TICKERS · ${tf.label}</span>
   </div>`;
